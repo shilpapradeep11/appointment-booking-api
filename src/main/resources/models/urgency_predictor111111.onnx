@@ -1,0 +1,21 @@
+# save_urgency_model.py
+import onnx
+import numpy as np
+import onnxruntime as ort
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
+from sklearn.linear_model import LogisticRegression
+
+# Dummy training
+X = np.array([[5, 1, 0], [30, 0, 1]])
+y = np.array([1, 0])  # urgent, not urgent
+model = LogisticRegression().fit(X, y)
+
+# Convert to ONNX
+onnx_model = convert_sklearn(
+    model,
+    initial_types=[("input", FloatTensorType([None, 3]))],
+    target_opset=9
+)
+with open("urgency_predictor.onnx", "wb") as f:
+    f.write(onnx_model.SerializeToString())
