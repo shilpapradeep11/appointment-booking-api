@@ -80,15 +80,18 @@ public class AppointmentServiceImpl {
                     request.setStatus("Manual Review Notified");
                     manualQueue.add(request);
                     System.out.println("[WARN] No available colleague. Queued for manual allocation.");
+                    request.setResponseMessage("No available colleague. Queued for manual allocation");
                 }
 
             } else {
                 request.setStatus("Manual Review Notified");
                 manualQueue.add(request);
                 System.out.println("[INFO] Appointment flagged for manual review (>24hrs): " + request.getApplicationType());
+                System.out.println("[WARN] No available colleague. Queued for manual allocation."+request.getResponseMessage());
             }
 
             System.out.println("[DEBUG] Saving with status: " + request.getStatus());
+            System.out.println("[WARN] No available colleague. Queued for manual allocation."+request.getResponseMessage());
             appointmentRepository.save(request);
 
             //Send email only if the status is either 'Manually Allocated' or 'Auto-allocated'

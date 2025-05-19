@@ -157,4 +157,20 @@ public class AppointmentService {
             return 0.5f;
         }
     }
- }
+
+    public boolean checkIfAnyColleagueAvailableWithin24Hrs(AppointmentRequest req) {
+        if (req.getRequestedDate() == null) return false;
+        LocalDateTime now = LocalDateTime.now();
+        if (req.getRequestedDate().isAfter(now.plusHours(24))) return true;
+
+        List<Colleague> colleagues = colleagueRepository.findAll();
+        for (Colleague c : colleagues) {
+            boolean hasConflict = appointmentRepository.hasConflict(c,
+                    req.getRequestedDate().minusMinutes(30),
+                    req.getRequestedDate().plusMinutes(30));
+            if (!hasConflict) return true;
+        }
+        return false;
+    }
+
+}

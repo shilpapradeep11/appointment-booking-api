@@ -60,7 +60,7 @@ public class AppointmentController {
 
     @SneakyThrows
     @PostMapping("/appointment")
-    public ResponseEntity<AppointmentRequest>  submitAppointment(@RequestBody AppointmentRequest request){
+    public ResponseEntity<String> submitAppointment(@RequestBody AppointmentRequest request) {
 
         if (request.getCustomer() == null || request.getCustomer().getId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Customer ID is missing");
@@ -68,18 +68,31 @@ public class AppointmentController {
 
         Customer customer = customerRepository.findById(request.getCustomer().getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer not found"));
+
         request.setCustomer(customer);
 
-        request.createdAt = LocalDateTime.now();
-        request.status = "Received";
+        // 🔁 Pre-check BEFORE saving or sending to RabbitMQ
+        boolean available = appointmentService.checkIfAnyColleagueAvailableWithin24Hrs(request);
 
+        if (!available) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body("⚠️ No available colleague at this time. Please choose a different date/time.");
+        }
+
+        request.setCreatedAt(LocalDateTime.now());
+        request.setStatus("Received");
+
+        // ✅ Save only if available
         AppointmentRequest saved = appointmentRepository.save(request);
+
         ObjectMapper debugMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         System.out.println("[Rabbit] Sending: " + debugMapper.writeValueAsString(saved));
-        rabbitTemplate.convertAndSend("appointmentExchange", "appointment.request", request);
 
-        return ResponseEntity.ok(saved);
+        rabbitTemplate.convertAndSend("appointmentExchange", "appointment.request", saved);
+
+        return ResponseEntity.ok("Appointment received");
     }
+
 
     @GetMapping("/manual-review-appointments")
     public ResponseEntity<Page<AppointmentWithColleague>> getManualReviewAppointments(@RequestParam(defaultValue = "0") int page,
