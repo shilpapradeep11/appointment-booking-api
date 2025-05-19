@@ -11,6 +11,7 @@
 	<groupId>com.dm</groupId>
 	<artifactId>appointment-booking</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
+	<packaging>jar</packaging>
 	<name>appointment-booking</name>
 	<description>Demo PoC for Appointment Booking</description>
 	<url/>
