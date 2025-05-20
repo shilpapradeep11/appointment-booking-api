@@ -8,6 +8,10 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jdk
 WORKDIR /app
 
+# Copy the built JAR
 COPY --from=build /app/target/appointment-booking-0.0.1-SNAPSHOT.jar app.jar
+
+# ✅ Copy the ONNX model directory if needed
+COPY src/main/resources/models /app/models
 
 CMD ["java", "-jar", "app.jar"]
