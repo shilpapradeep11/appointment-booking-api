@@ -132,29 +132,26 @@ public class AppointmentService {
                     .setTypes(float[][].class, Classifications.class)
                     .optModelPath(modelPath)
                     .optEngine("OnnxRuntime")
-                    .optProgress(new ProgressBar())
                     .optTranslator(new Translator<float[][], Classifications>() {
                         @Override
                         public NDList processInput(TranslatorContext ctx, float[][] input) {
                             NDManager manager = ctx.getNDManager();
-                            NDArray array = manager.create(input);
-                            return new NDList(array);
+                            return new NDList(manager.create(input));
                         }
 
                         @Override
                         public Classifications processOutput(TranslatorContext ctx, NDList list) {
-                            NDArray probabilities = list.singletonOrThrow();
-
-                            // Assume two classes: 0 => low urgency, 1 => high urgency
-                            List<String> classes = Arrays.asList("low", "high");
-                            return new Classifications(classes, probabilities);
+                            NDArray probs = list.singletonOrThrow(); // Shape: [1, 2] if binary classification
+                            List<String> labels = Arrays.asList("low", "high");
+                            return new Classifications(labels, probs);
                         }
 
                         @Override
                         public Batchifier getBatchifier() {
-                            return null; // No batching
+                            return null;
                         }
                     })
+                    .optProgress(new ProgressBar())
                     .build();
 
             try (ZooModel<float[][], Classifications> model = ModelZoo.loadModel(criteria);
@@ -167,14 +164,14 @@ public class AppointmentService {
                 };
 
                 Classifications result = predictor.predict(new float[][]{features});
-                float probability = (float) result.best().getProbability();
-                System.out.println("[ML] Predicted urgency score: " + probability);
-                return probability;
+                float score = (float) result.best().getProbability();
+                System.out.println("[ML] Urgency Score = " + score + " (class: " + result.best().getClassName() + ")");
+                return score;
             }
 
         } catch (Exception e) {
             e.printStackTrace();
-            return 0.5f; // fallback
+            return 0.5f;
         }
     }
 
