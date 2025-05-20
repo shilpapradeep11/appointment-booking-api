@@ -25,6 +25,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -120,9 +121,15 @@ public class AppointmentService {
 
     public float predictUrgency(AppointmentRequest request) {
         try {
-            Path modelPath = Paths.get(
-                    Objects.requireNonNull(getClass().getClassLoader()
-                            .getResource("models/urgency_predictor.onnx")).toURI());
+
+            URL modelUrl = getClass().getClassLoader().getResource("models/urgency_predictor.onnx");
+            System.out.println("Loading ONNX model from: " + modelUrl);
+
+            if (modelUrl == null) {
+                throw new FileNotFoundException("Model file not found in classpath");
+            }
+
+            Path modelPath = Paths.get(modelUrl.toURI());
 
             Criteria<NDList, NDList> criteria = Criteria.builder()
                     .setTypes(NDList.class, NDList.class)
