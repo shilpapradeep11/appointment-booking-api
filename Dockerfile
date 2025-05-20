@@ -12,6 +12,6 @@ WORKDIR /app
 COPY --from=build /app/target/appointment-booking-0.0.1-SNAPSHOT.jar app.jar
 
 # ✅ Copy the ONNX model directory if needed
-COPY src/main/resources/models /app/models
+COPY src/main/resources/models/urgency_predictor.onnx /app/models/urgency_predictor.onnx
 
 CMD ["java", "-jar", "app.jar"]
