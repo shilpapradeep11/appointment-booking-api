@@ -36,6 +36,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -127,38 +128,37 @@ public class AppointmentService {
             Path modelPath = Paths.get("/models/urgency_predictor.onnx");
             System.out.println("Loading .ONNX file from " + modelPath);
 
-            // Define translator: from float[] -> Classifications
-            Translator<float[], Classifications> translator = new Translator<>() {
-                @Override
-                public NDList processInput(TranslatorContext ctx, float[] input) {
-                    NDManager manager = ctx.getNDManager();
-                    NDArray array = manager.create(input).reshape(1, 3); // match [1, 3]
-                    return new NDList(array);
-                }
-
-                @Override
-                public Classifications processOutput(TranslatorContext ctx, NDList list) {
-                    NDArray probs = list.singletonOrThrow();
-                    List<String> classes = List.of("low", "high"); // Assuming binary output
-                    return new Classifications(classes, probs);
-                }
-
-                @Override
-                public Batchifier getBatchifier() {
-                    return null;
-                }
-            };
-
-            Criteria<float[], Classifications> criteria = Criteria.builder()
-                    .setTypes(float[].class, Classifications.class)
+            Criteria<float[][], Classifications> criteria = Criteria.builder()
+                    .setTypes(float[][].class, Classifications.class)
                     .optModelPath(modelPath)
                     .optEngine("OnnxRuntime")
-                    .optTranslator(translator)
                     .optProgress(new ProgressBar())
+                    .optTranslator(new Translator<float[][], Classifications>() {
+                        @Override
+                        public NDList processInput(TranslatorContext ctx, float[][] input) {
+                            NDManager manager = ctx.getNDManager();
+                            NDArray array = manager.create(input);
+                            return new NDList(array);
+                        }
+
+                        @Override
+                        public Classifications processOutput(TranslatorContext ctx, NDList list) {
+                            NDArray probabilities = list.singletonOrThrow();
+
+                            // Assume two classes: 0 => low urgency, 1 => high urgency
+                            List<String> classes = Arrays.asList("low", "high");
+                            return new Classifications(classes, probabilities);
+                        }
+
+                        @Override
+                        public Batchifier getBatchifier() {
+                            return null; // No batching
+                        }
+                    })
                     .build();
 
-            try (ZooModel<float[], Classifications> model = ModelZoo.loadModel(criteria);
-                 Predictor<float[], Classifications> predictor = model.newPredictor()) {
+            try (ZooModel<float[][], Classifications> model = ModelZoo.loadModel(criteria);
+                 Predictor<float[][], Classifications> predictor = model.newPredictor()) {
 
                 float[] features = new float[]{
                         Duration.between(LocalDateTime.now(), request.getRequestedDate()).toHours(),
@@ -166,7 +166,7 @@ public class AppointmentService {
                         "Telephone".equalsIgnoreCase(request.getInteractionMethod()) ? 1f : 0f
                 };
 
-                Classifications result = predictor.predict(features);
+                Classifications result = predictor.predict(new float[][]{features});
                 float probability = (float) result.best().getProbability();
                 System.out.println("[ML] Predicted urgency score: " + probability);
                 return probability;
@@ -174,10 +174,9 @@ public class AppointmentService {
 
         } catch (Exception e) {
             e.printStackTrace();
-            return 0.5f; // Default fallback
+            return 0.5f; // fallback
         }
     }
-
 
     public boolean checkIfAnyColleagueAvailableWithin24Hrs(AppointmentRequest req) {
         if (req.getRequestedDate() == null) return false;
