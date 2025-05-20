@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -126,57 +127,54 @@ public class AppointmentService {
     public float predictUrgency(AppointmentRequest request) {
         try {
             Path modelPath = Paths.get("/models/urgency_predictor.onnx");
-            System.out.println("Loading .ONNX file from " + modelPath);
+            System.out.println("✅ Loading .ONNX file from: " + modelPath);
+            System.out.println("📁 Exists? " + Files.exists(modelPath));
 
-            Criteria<float[][], Classifications> criteria = Criteria.builder()
-                    .setTypes(float[][].class, Classifications.class)
+            Criteria<NDList, NDList> criteria = Criteria.builder()
+                    .setTypes(NDList.class, NDList.class)
                     .optModelPath(modelPath)
                     .optEngine("OnnxRuntime")
-                    .optTranslator(new Translator<float[][], Classifications>() {
-                        @Override
-                        public NDList processInput(TranslatorContext ctx, float[][] input) {
-                            NDManager manager = ctx.getNDManager();
-                            return new NDList(manager.create(input));
-                        }
-
-                        @Override
-                        public Classifications processOutput(TranslatorContext ctx, NDList list) {
-                            // The output is likely a 1D tensor [1, 2] with probabilities
-                            NDArray probs = list.get(0);  // This will likely be probs
-                            List<String> classes = Arrays.asList("low", "high");
-                            return new Classifications(classes, probs);
-                        }
-
-                        @Override
-                        public Batchifier getBatchifier() {
-                            return null;
-                        }
-                    })
-                    .optInputName("input")  // 👈 Input name from Netron
-                    .optOutputName("output_probability")  // 👈 Preferred output
                     .optProgress(new ProgressBar())
                     .build();
 
-            try (ZooModel<float[][], Classifications> model = ModelZoo.loadModel(criteria);
-                 Predictor<float[][], Classifications> predictor = model.newPredictor()) {
+            try (ZooModel<NDList, NDList> model = ModelZoo.loadModel(criteria);
+                 Predictor<NDList, NDList> predictor = model.newPredictor()) {
 
+                NDManager manager = NDManager.newBaseManager();
+
+                // Convert your inputs to a float tensor with shape [1, 3]
                 float[] features = new float[]{
                         Duration.between(LocalDateTime.now(), request.getRequestedDate()).toHours(),
                         "Video".equalsIgnoreCase(request.getInteractionMethod()) ? 1f : 0f,
                         "Telephone".equalsIgnoreCase(request.getInteractionMethod()) ? 1f : 0f
                 };
 
-                Classifications result = predictor.predict(new float[][]{features});
-                float score = (float) result.best().getProbability();
-                System.out.println("[ML] Urgency Score: " + score);
-                return score;
+                NDArray inputArray = manager.create(features, new Shape(1, 3));
+                NDList input = new NDList(inputArray);
+
+                NDList output = predictor.predict(input);
+
+                // Output 0 is likely 'output_label' (int), or 'output_probability' (float[]) depending on model export
+                NDArray raw = output.get(0);
+
+                // Check output shape/type for debug
+                System.out.println("[DEBUG] Output NDArray: " + raw);
+                System.out.println("[DEBUG] Shape: " + raw.getShape());
+
+                // If it's a float prediction (probability between 0 and 1)
+                float prediction = raw.toFloatArray()[0];
+
+                System.out.println("[ML] Predicted urgency score: " + prediction);
+                return prediction;
+
             }
 
         } catch (Exception e) {
             e.printStackTrace();
-            return 0.5f;
+            return 0.5f; // fallback score
         }
     }
+
 
 
     public boolean checkIfAnyColleagueAvailableWithin24Hrs(AppointmentRequest req) {
