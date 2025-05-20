@@ -153,20 +153,13 @@ public class AppointmentService {
                 NDList input = new NDList(inputArray);
 
                 NDList output = predictor.predict(input);
+                long rawPrediction = output.get(0).toLongArray()[0]; // Correct method for int64
+                float prediction = (float) rawPrediction;
 
-                // Output 0 is likely 'output_label' (int), or 'output_probability' (float[]) depending on model export
-                NDArray raw = output.get(0);
-
-                // Check output shape/type for debug
-                System.out.println("[DEBUG] Output NDArray: " + raw);
-                System.out.println("[DEBUG] Shape: " + raw.getShape());
-
-                // If it's a float prediction (probability between 0 and 1)
-                float prediction = raw.toFloatArray()[0];
-
-                System.out.println("[ML] Predicted urgency score: " + prediction);
+                System.out.println("[DEBUG] Output NDArray: " + output.get(0));
+                System.out.println("[DEBUG] Shape: " + output.get(0).getShape());
+                System.out.println("[ML] Urgency prediction: " + prediction);
                 return prediction;
-
             }
 
         } catch (Exception e) {
