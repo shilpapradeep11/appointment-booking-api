@@ -29,6 +29,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -123,13 +124,14 @@ public class AppointmentService {
         try {
 
             URL modelUrl = getClass().getClassLoader().getResource("models/urgency_predictor.onnx");
-            System.out.println("Loading ONNX model from: " + modelUrl);
 
             if (modelUrl == null) {
                 throw new FileNotFoundException("Model file not found in classpath");
             }
 
             Path modelPath = Paths.get(modelUrl.toURI());
+            System.out.println("Checking ONNX file: " + modelPath.toAbsolutePath());
+            System.out.println("Exists? " + Files.exists(modelPath));
 
             Criteria<NDList, NDList> criteria = Criteria.builder()
                     .setTypes(NDList.class, NDList.class)
