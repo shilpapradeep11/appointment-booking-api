@@ -4,6 +4,7 @@ import ai.djl.MalformedModelException;
 import ai.djl.Model;
 import ai.djl.engine.Engine;
 import ai.djl.inference.Predictor;
+import ai.djl.modality.Classifications;
 import ai.djl.ndarray.NDArray;
 import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
@@ -13,7 +14,10 @@ import ai.djl.repository.zoo.ModelNotFoundException;
 import ai.djl.repository.zoo.ModelZoo;
 import ai.djl.repository.zoo.ZooModel;
 import ai.djl.training.util.ProgressBar;
+import ai.djl.translate.Batchifier;
 import ai.djl.translate.TranslateException;
+import ai.djl.translate.Translator;
+import ai.djl.translate.TranslatorContext;
 import com.dm.appt.dto.AppointmentWithColleague;
 import com.dm.appt.entity.AppointmentRequest;
 import com.dm.appt.entity.Colleague;
@@ -121,41 +125,59 @@ public class AppointmentService {
     public float predictUrgency(AppointmentRequest request) {
         try {
             Path modelPath = Paths.get("/models/urgency_predictor.onnx");
-            System.out.println("Loading .ONNX file from "+modelPath.getFileName());
+            System.out.println("Loading .ONNX file from " + modelPath);
 
-            Criteria<NDList, NDList> criteria = Criteria.builder()
-                    .setTypes(NDList.class, NDList.class)
+            // Define translator: from float[] -> Classifications
+            Translator<float[], Classifications> translator = new Translator<>() {
+                @Override
+                public NDList processInput(TranslatorContext ctx, float[] input) {
+                    NDManager manager = ctx.getNDManager();
+                    NDArray array = manager.create(input).reshape(1, 3); // match [1, 3]
+                    return new NDList(array);
+                }
+
+                @Override
+                public Classifications processOutput(TranslatorContext ctx, NDList list) {
+                    NDArray probs = list.singletonOrThrow();
+                    List<String> classes = List.of("low", "high"); // Assuming binary output
+                    return new Classifications(classes, probs);
+                }
+
+                @Override
+                public Batchifier getBatchifier() {
+                    return null;
+                }
+            };
+
+            Criteria<float[], Classifications> criteria = Criteria.builder()
+                    .setTypes(float[].class, Classifications.class)
                     .optModelPath(modelPath)
                     .optEngine("OnnxRuntime")
+                    .optTranslator(translator)
                     .optProgress(new ProgressBar())
                     .build();
 
-            try (ZooModel<NDList, NDList> model = ModelZoo.loadModel(criteria);
-                 Predictor<NDList, NDList> predictor = model.newPredictor()) {
+            try (ZooModel<float[], Classifications> model = ModelZoo.loadModel(criteria);
+                 Predictor<float[], Classifications> predictor = model.newPredictor()) {
 
-                NDManager manager = NDManager.newBaseManager();
+                float[] features = new float[]{
+                        Duration.between(LocalDateTime.now(), request.getRequestedDate()).toHours(),
+                        "Video".equalsIgnoreCase(request.getInteractionMethod()) ? 1f : 0f,
+                        "Telephone".equalsIgnoreCase(request.getInteractionMethod()) ? 1f : 0f
+                };
 
-                    float[] features = new float[] {
-                            Duration.between(LocalDateTime.now(), request.requestedDate).toHours(),
-                            "Video".equalsIgnoreCase(request.interactionMethod) ? 1 : 0,
-                            "Telephone".equalsIgnoreCase(request.interactionMethod) ? 1 : 0
-                    };
-
-                    NDList input = new NDList(manager.create(features, new Shape(1, 3)));
-                    NDList output = predictor.predict(input);
-                    long raw = output.get(0).toLongArray()[0];
-                    float prediction = (float) raw;
-
-                System.out.println("[ML] Urgency prediction: " + prediction);
-                    return prediction;
+                Classifications result = predictor.predict(features);
+                float probability = (float) result.best().getProbability();
+                System.out.println("[ML] Predicted urgency score: " + probability);
+                return probability;
             }
-
 
         } catch (Exception e) {
             e.printStackTrace();
-            return 0.5f;
+            return 0.5f; // Default fallback
         }
     }
+
 
     public boolean checkIfAnyColleagueAvailableWithin24Hrs(AppointmentRequest req) {
         if (req.getRequestedDate() == null) return false;
