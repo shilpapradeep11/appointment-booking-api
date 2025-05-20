@@ -58,5 +58,10 @@ public class ColleagueController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/health")
+    public String healthCheck() {
+        return "Service is UP";
+    }
+
 
 }
