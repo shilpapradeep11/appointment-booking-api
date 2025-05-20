@@ -141,9 +141,10 @@ public class AppointmentService {
 
                         @Override
                         public Classifications processOutput(TranslatorContext ctx, NDList list) {
-                            NDArray probs = list.singletonOrThrow(); // Shape: [1, 2] if binary classification
-                            List<String> labels = Arrays.asList("low", "high");
-                            return new Classifications(labels, probs);
+                            // The output is likely a 1D tensor [1, 2] with probabilities
+                            NDArray probs = list.get(0);  // This will likely be probs
+                            List<String> classes = Arrays.asList("low", "high");
+                            return new Classifications(classes, probs);
                         }
 
                         @Override
@@ -151,6 +152,8 @@ public class AppointmentService {
                             return null;
                         }
                     })
+                    .optInputName("input")  // 👈 Input name from Netron
+                    .optOutputName("output_probability")  // 👈 Preferred output
                     .optProgress(new ProgressBar())
                     .build();
 
@@ -165,7 +168,7 @@ public class AppointmentService {
 
                 Classifications result = predictor.predict(new float[][]{features});
                 float score = (float) result.best().getProbability();
-                System.out.println("[ML] Urgency Score = " + score + " (class: " + result.best().getClassName() + ")");
+                System.out.println("[ML] Urgency Score: " + score);
                 return score;
             }
 
@@ -174,6 +177,7 @@ public class AppointmentService {
             return 0.5f;
         }
     }
+
 
     public boolean checkIfAnyColleagueAvailableWithin24Hrs(AppointmentRequest req) {
         if (req.getRequestedDate() == null) return false;
